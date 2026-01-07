@@ -3,6 +3,7 @@ import { X, FileText, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { useState } from "react";
+import innowiLogo from "@/assets/innowi-logo.png";
 
 interface LeadCaptureModalProps {
   isOpen: boolean;
@@ -54,8 +55,8 @@ export const LeadCaptureModal = ({
             {!submitted ? (
               <>
                 <div className="text-center mb-6">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full gradient-hero flex items-center justify-center shadow-glow">
-                    <FileText className="w-8 h-8 text-primary-foreground" />
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl shadow-glow overflow-hidden">
+                    <img src={innowiLogo} alt="Innowi Logo" className="w-full h-full object-cover" />
                   </div>
                   <h2 className="font-display text-2xl font-bold text-foreground mb-2">
                     Get Your Full Report

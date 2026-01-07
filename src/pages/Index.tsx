@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { UtensilsCrossed, TrendingUp, Shield, Zap } from "lucide-react";
+import { TrendingUp, Shield, Zap } from "lucide-react";
 import { SearchForm } from "@/components/SearchForm";
 import { RestaurantConfirmation } from "@/components/RestaurantConfirmation";
 import { ScanProgress } from "@/components/ScanProgress";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
 import { LeadCaptureModal } from "@/components/LeadCaptureModal";
+import innowiLogo from "@/assets/innowi-logo.png";
 
 type AppState = "landing" | "confirmation" | "scanning" | "results";
 
@@ -131,9 +132,7 @@ const Index = () => {
       <nav className="fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg gradient-hero flex items-center justify-center">
-              <UtensilsCrossed className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src={innowiLogo} alt="Innowi Logo" className="w-9 h-9 rounded-lg" />
             <span className="font-display font-bold text-lg text-foreground">
               RestaurantGrader
             </span>
