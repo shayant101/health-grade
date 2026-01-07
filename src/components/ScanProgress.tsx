@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import innowiLogo from "@/assets/innowi-logo.png";
 
 interface ScanStep {
   id: string;
@@ -47,11 +48,11 @@ export const ScanProgress = ({ onComplete }: ScanProgressProps) => {
       >
         <div className="text-center mb-8">
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-            className="w-16 h-16 mx-auto mb-4 rounded-full gradient-hero flex items-center justify-center shadow-glow"
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            className="w-16 h-16 mx-auto mb-4 rounded-2xl shadow-glow overflow-hidden"
           >
-            <Loader2 className="w-8 h-8 text-primary-foreground" />
+            <img src={innowiLogo} alt="Scanning" className="w-full h-full object-cover" />
           </motion.div>
           <h2 className="font-display text-2xl font-bold text-foreground mb-2">
             Scanning Your Restaurant
