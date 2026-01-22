@@ -229,6 +229,20 @@ const Index = () => {
         )}
       </main>
 
+      {/* Footer */}
+      <footer className="border-t border-border bg-background">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <span>Powered by</span>
+            <img
+              src={innowiLogo}
+              alt="Innowi"
+              className="h-6 w-auto"
+            />
+          </div>
+        </div>
+      </footer>
+
       <LeadCaptureModal
         isOpen={showLeadModal}
         onClose={() => setShowLeadModal(false)}
