@@ -1,0 +1,5 @@
+-r requirements.txt
+playwright==1.41.2
+playwright-python==0.3.3
+webdriver-manager==4.0.1
+selenium==4.17.2
