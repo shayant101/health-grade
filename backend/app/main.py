@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -66,11 +67,19 @@ async def health_check():
     Returns:
         dict: Status of the application
     """
-    return {
-        "status": "healthy",
-        "environment": settings.ENVIRONMENT,
-        "database": "connected" if database.client else "disconnected"
-    }
+    try:
+        logger.info("Health check endpoint called")
+        return {
+            "status": "healthy",
+            "environment": settings.ENVIRONMENT,
+            "timestamp": str(datetime.now())
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 # Global exception handler
 @app.exception_handler(Exception)

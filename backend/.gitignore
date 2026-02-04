@@ -1,0 +1,11 @@
+# Python environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# IDE and system files
+.DS_Store
+.vscode/
+*.swp
+*.swo
