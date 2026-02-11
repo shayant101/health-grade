@@ -137,13 +137,5 @@ def cleanup_old_scans(days_old: int = 30):
     except Exception as e:
         logging.error(f"Scan cleanup error: {e}")
 
-# Periodic task configuration
-perform_restaurant_scan.apply_async(
-    retry=True,
-    retry_policy={
-        'max_retries': 3,
-        'interval_start': 0,
-        'interval_step': 0.2,
-        'interval_max': 0.6,
-    }
-)
+# Commented out periodic task configuration
+# perform_restaurant_scan.apply_async() should only be called with specific restaurant data

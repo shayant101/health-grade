@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .database import database
-from .celery_app import celery_app
+# from .celery_app import celery_app
 
 # Configure logging
 logging.basicConfig(
@@ -103,8 +103,13 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Import and register routes (to be implemented in later phases)
-# from .routes import restaurants, scans, leads
+# Import and register routes
+from .routes import restaurants, scans, leads
+
+# Register routes with appropriate prefixes
+app.include_router(restaurants.router, prefix="/api/restaurants", tags=["restaurants"])
+app.include_router(scans.router, prefix="/api/scans", tags=["scans"])
+app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
 
 # Run the application if this file is executed directly
 if __name__ == "__main__":
