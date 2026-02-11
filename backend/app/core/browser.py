@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
+from contextlib import asynccontextmanager
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from urllib.parse import urlparse
@@ -10,11 +11,11 @@ class BrowserManager:
     Manages Playwright browser lifecycle for website analysis and order button detection.
     
     Provides an async context manager for browser initialization, page creation,
-    and comprehensive website analysis capabilities.
+    and comprehensive website analysis capabilities with proper resource cleanup.
     """
     
-    def __init__(self, 
-                 headless: bool = True, 
+    def __init__(self,
+                 headless: bool = True,
                  viewport: Dict[str, int] = {"width": 375, "height": 667},
                  timeout: int = 30000):
         """
@@ -32,6 +33,7 @@ class BrowserManager:
         self._browser = None
         self._context = None
         self._logger = logging.getLogger(__name__)
+        self._active_pages = set()  # Track active pages for cleanup
 
     async def __aenter__(self):
         """
@@ -42,6 +44,7 @@ class BrowserManager:
             BrowserManager: Configured browser manager instance.
         """
         try:
+            self._logger.info("Initializing Playwright browser...")
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=self._headless,
@@ -51,6 +54,7 @@ class BrowserManager:
                 viewport=self._viewport,
                 user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
             )
+            self._logger.info("Browser initialized successfully")
             return self
         except Exception as e:
             self._logger.error(f"Failed to initialize browser: {e}")
@@ -60,20 +64,73 @@ class BrowserManager:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """
         Async context manager exit point.
-        Closes browser and stops Playwright.
+        Ensures all resources are properly cleaned up even on exceptions.
+        
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
         """
+        if exc_type:
+            self._logger.warning(f"Exiting browser context due to exception: {exc_type.__name__}: {exc_val}")
         await self.close()
+        return False  # Don't suppress exceptions
+
+    @asynccontextmanager
+    async def get_page(self):
+        """
+        Context manager for creating and automatically cleaning up a page.
+        This is the recommended way to use pages to prevent memory leaks.
+        
+        Usage:
+            async with browser_manager.get_page() as page:
+                await page.goto(url)
+                # ... work with page ...
+            # Page is automatically closed
+        
+        Yields:
+            Page: Configured Playwright page that will be automatically closed.
+        """
+        page = None
+        try:
+            if not self._context:
+                raise RuntimeError("Browser context not initialized. Use 'async with BrowserManager()' first.")
+            
+            page = await self._context.new_page()
+            page.set_default_timeout(self._timeout)
+            self._active_pages.add(page)
+            self._logger.debug(f"Created new page. Active pages: {len(self._active_pages)}")
+            yield page
+        except Exception as e:
+            self._logger.error(f"Error in page context: {e}")
+            raise
+        finally:
+            if page:
+                try:
+                    await page.close()
+                    self._active_pages.discard(page)
+                    self._logger.debug(f"Closed page. Active pages: {len(self._active_pages)}")
+                except Exception as e:
+                    self._logger.error(f"Error closing page: {e}")
 
     async def create_page(self) -> Page:
         """
         Create a new page with configured settings.
         
+        WARNING: When using this method directly, you MUST manually close the page
+        to prevent memory leaks. Consider using get_page() context manager instead.
+        
         Returns:
             Page: Configured Playwright page.
         """
         try:
+            if not self._context:
+                raise RuntimeError("Browser context not initialized. Use 'async with BrowserManager()' first.")
+            
             page = await self._context.new_page()
             page.set_default_timeout(self._timeout)
+            self._active_pages.add(page)
+            self._logger.debug(f"Created new page (manual). Active pages: {len(self._active_pages)}")
             return page
         except Exception as e:
             self._logger.error(f"Failed to create page: {e}")
@@ -81,7 +138,7 @@ class BrowserManager:
 
     async def analyze_website(self, url: str) -> Dict[str, Any]:
         """
-        Comprehensive website analysis function.
+        Comprehensive website analysis function with proper resource cleanup.
         
         Args:
             url (str): Website URL to analyze.
@@ -89,7 +146,6 @@ class BrowserManager:
         Returns:
             Dict[str, Any]: Analysis results including SSL, responsiveness, title, etc.
         """
-        page = await self.create_page()
         analysis = {
             "url": url,
             "has_ssl": False,
@@ -101,6 +157,7 @@ class BrowserManager:
             "error": None
         }
 
+        page = None
         try:
             # Validate URL
             parsed_url = urlparse(url)
@@ -110,8 +167,11 @@ class BrowserManager:
             # Check SSL
             analysis["has_ssl"] = parsed_url.scheme == "https"
 
+            # Create page with tracking
+            page = await self.create_page()
+
             # Navigate to page
-            await page.goto(url, wait_until="networkidle")
+            await page.goto(url, wait_until="networkidle", timeout=self._timeout)
 
             # Capture screenshot
             screenshot_path = f"/tmp/screenshots/{parsed_url.netloc}.png"
@@ -134,11 +194,21 @@ class BrowserManager:
             order_button = await self.detect_order_button(page)
             analysis.update(order_button)
 
+        except asyncio.TimeoutError as e:
+            self._logger.error(f"Timeout analyzing {url}: {e}")
+            analysis["error"] = f"Timeout: {str(e)}"
         except Exception as e:
             self._logger.error(f"Website analysis error for {url}: {e}")
             analysis["error"] = str(e)
         finally:
-            await page.close()
+            # CRITICAL: Always close the page to prevent memory leaks
+            if page:
+                try:
+                    await page.close()
+                    self._active_pages.discard(page)
+                    self._logger.debug(f"Closed analysis page. Active pages: {len(self._active_pages)}")
+                except Exception as e:
+                    self._logger.error(f"Error closing page in analyze_website: {e}")
 
         return analysis
 
@@ -225,21 +295,52 @@ class BrowserManager:
 
     async def close(self):
         """
-        Close browser resources and stop Playwright.
+        Close browser resources and stop Playwright with comprehensive cleanup.
+        Ensures all resources are freed even if individual cleanup steps fail.
         """
-        try:
-            if self._context:
+        self._logger.info("Starting browser cleanup...")
+        
+        # Close all active pages first
+        if self._active_pages:
+            self._logger.warning(f"Closing {len(self._active_pages)} active pages that weren't properly closed")
+            for page in list(self._active_pages):
+                try:
+                    await page.close()
+                except Exception as e:
+                    self._logger.error(f"Error closing active page: {e}")
+            self._active_pages.clear()
+        
+        # Close context
+        if self._context:
+            try:
                 await self._context.close()
-            if self._browser:
+                self._logger.info("Browser context closed successfully")
+            except Exception as e:
+                self._logger.error(f"Error closing browser context: {e}")
+            finally:
+                self._context = None
+        
+        # Close browser
+        if self._browser:
+            try:
                 await self._browser.close()
-            if self._playwright:
+                self._logger.info("Browser closed successfully")
+            except Exception as e:
+                self._logger.error(f"Error closing browser: {e}")
+            finally:
+                self._browser = None
+        
+        # Stop Playwright
+        if self._playwright:
+            try:
                 await self._playwright.stop()
-        except Exception as e:
-            self._logger.error(f"Error closing browser resources: {e}")
-        finally:
-            self._context = None
-            self._browser = None
-            self._playwright = None
+                self._logger.info("Playwright stopped successfully")
+            except Exception as e:
+                self._logger.error(f"Error stopping Playwright: {e}")
+            finally:
+                self._playwright = None
+        
+        self._logger.info("Browser cleanup completed")
 
 # Global browser manager instance
 browser_manager = BrowserManager()
