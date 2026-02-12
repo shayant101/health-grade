@@ -215,6 +215,7 @@ class BrowserManager:
     async def detect_order_button(self, page: Page) -> Dict[str, Any]:
         """
         Detect order buttons on a webpage.
+        Only detects actual ordering functionality, not navigation menus.
         
         Args:
             page (Page): Playwright page to analyze.
@@ -222,16 +223,23 @@ class BrowserManager:
         Returns:
             Dict[str, Any]: Order button detection results.
         """
+        # Only specific order-related patterns (removed generic "menu", "order", etc.)
         order_patterns = [
-            'order', 'order now', 'order online', 
-            'delivery', 'pickup', 'menu', 'food'
+            'order now', 'order online', 'start an order', 'place an order',
+            'order pickup', 'order delivery', 'order food', 'start order',
+            'begin order', 'order ahead', 'online ordering'
         ]
+        
+        # Selector-based detection for order buttons
         order_selectors = [
-            'a.order', '.order-button', 'button.order', 
-            'a[href*="order"]', 'button[data-testid*="order"]'
+            'button[class*="order"]', 'a[class*="order"]',
+            'button[id*="order"]', 'a[id*="order"]',
+            'button[aria-label*="order"]', 'a[aria-label*="order"]',
+            '[data-testid*="order"]', '[data-test*="order"]'
         ]
+        
         third_party_platforms = [
-            'doordash', 'ubereats', 'grubhub', 
+            'doordash', 'ubereats', 'grubhub',
             'postmates', 'seamless', 'chownow'
         ]
 
@@ -243,29 +251,66 @@ class BrowserManager:
         }
 
         try:
-            # Check text-based order buttons
+            # Strategy 1: Look for buttons/links with specific order text (case-insensitive)
             for pattern in order_patterns:
-                button = await page.query_selector(f'text="{pattern}"')
-                if button:
-                    results["order_button_detected"] = True
-                    results["button_text"] = await button.inner_text()
-                    results["button_selector"] = await self._get_selector(button)
-                    break
+                # Use JavaScript to find elements with case-insensitive text matching
+                buttons = await page.evaluate(f'''() => {{
+                    const pattern = "{pattern}";
+                    const elements = Array.from(document.querySelectorAll('button, a'));
+                    return elements
+                        .filter(el => el.innerText && el.innerText.toLowerCase().includes(pattern.toLowerCase()))
+                        .map(el => {{
+                            // Return element info we can use to query it again
+                            if (el.id) return {{selector: '#' + el.id, text: el.innerText}};
+                            if (el.className) return {{selector: '.' + el.className.split(' ').join('.'), text: el.innerText}};
+                            return {{selector: el.tagName.toLowerCase(), text: el.innerText}};
+                        }});
+                }}''')
+                
+                if buttons and len(buttons) > 0:
+                    # Try to get the actual element using the selector
+                    for btn_info in buttons:
+                        try:
+                            button = await page.query_selector(btn_info['selector'])
+                            if button:
+                                button_text = btn_info['text'].strip()
+                                
+                                # Verify it's not in navigation (common false positive)
+                                parent_html = await button.evaluate('el => el.parentElement?.outerHTML || ""')
+                                is_nav = any(tag in parent_html.lower() for tag in ['<nav', '<header', 'navigation'])
+                                
+                                if not is_nav and len(button_text) < 100:  # Reasonable button text length
+                                    results["order_button_detected"] = True
+                                    results["button_text"] = button_text
+                                    results["button_selector"] = await self._get_selector(button)
+                                    self._logger.info(f"Found order button: '{results['button_text']}' (pattern: {pattern})")
+                                    break
+                        except:
+                            continue
+                    
+                    if results["order_button_detected"]:
+                        break
 
-            # Check selector-based order buttons
+            # Strategy 2: Check selector-based order buttons (if text search failed)
             if not results["order_button_detected"]:
                 for selector in order_selectors:
-                    button = await page.query_selector(selector)
-                    if button:
-                        results["order_button_detected"] = True
-                        results["button_text"] = await button.inner_text() or selector
-                        results["button_selector"] = selector
+                    buttons = await page.query_selector_all(selector)
+                    for button in buttons:
+                        button_text = await button.inner_text()
+                        # Must contain "order" in the text to be valid
+                        if button_text and 'order' in button_text.lower():
+                            results["order_button_detected"] = True
+                            results["button_text"] = button_text.strip()
+                            results["button_selector"] = selector
+                            self._logger.info(f"Found order button via selector {selector}: '{results['button_text']}'")
+                            break
+                    if results["order_button_detected"]:
                         break
 
             # Detect third-party platforms
             page_text = await page.content()
             results["platforms"] = [
-                platform for platform in third_party_platforms 
+                platform for platform in third_party_platforms
                 if platform in page_text.lower()
             ]
 
