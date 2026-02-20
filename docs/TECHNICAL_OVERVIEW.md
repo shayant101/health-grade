@@ -103,11 +103,16 @@ RestaurantGrader is a comprehensive digital health analysis platform for restaur
   - Access business ratings, reviews, and contact information
   - Validate and enrich restaurant data
 
-- **Google PageSpeed Insights API**: Website performance analysis
-  - Measure website loading speed
-  - Assess mobile and desktop performance
-  - Evaluate accessibility and SEO metrics
-  - Provide detailed performance insights
+- **Google PageSpeed Insights API**: Comprehensive website performance analysis (✅ Fully Integrated)
+  - **Performance Score**: Measures loading speed, interactivity, and visual stability (0-100)
+  - **Accessibility Score**: Evaluates website accessibility for all users (0-100)
+  - **Best Practices Score**: Checks adherence to modern web standards (0-100)
+  - **SEO Score**: Assesses search engine optimization quality (0-100)
+  - **Loading Time Metrics**: Time to Interactive (TTI) in milliseconds
+  - **Multi-Category Analysis**: Requests all categories in parallel for efficiency
+  - **Graceful Degradation**: Falls back to Playwright-only analysis if API fails
+  - **Smart Timeout**: 90-second timeout handles slow websites
+  - See `docs/PAGESPEED_INTEGRATION.md` for complete documentation
 
 - **OpenAI/LLM API**: AI-powered narrative generation
   - Generate contextual insights

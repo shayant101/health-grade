@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
-import { Check, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { api } from "@/services/api";
+import { ScanResponse } from "@/types/api";
 import innowiLogo from "@/assets/innowi-logo.png";
 
 interface ScanStep {
@@ -18,26 +20,121 @@ const scanSteps: ScanStep[] = [
 ];
 
 interface ScanProgressProps {
-  onComplete: () => void;
+  scanId: string;
+  onComplete: (data: any) => void;
 }
 
-export const ScanProgress = ({ onComplete }: ScanProgressProps) => {
+export const ScanProgress = ({ scanId, onComplete }: ScanProgressProps) => {
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState<string>('pending');
+  const [currentScan, setCurrentScan] = useState<ScanResponse | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  
+  // Prevent double-completion in React Strict Mode
+  const hasCompletedRef = useRef(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (currentStep >= scanSteps.length) {
-      setTimeout(onComplete, 500);
-      return;
+    if (!scanId || hasCompletedRef.current) return;
+
+    console.log('🔄 Starting polling for scan:', scanId);
+
+    const pollScan = async () => {
+      try {
+        const scan = await api.getScan(scanId);
+        console.log('📊 Scan status:', scan.status, 'Score:', scan.overall_score);
+        
+        setCurrentScan(scan);
+        setStatus(scan.status);
+
+        // Update progress based on status
+        if (scan.status === 'pending') {
+          setProgress(10);
+        } else if (scan.status === 'in_progress') {
+          setProgress(50);
+        } else if (scan.status === 'completed') {
+          setProgress(100);
+          
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          
+          // Prevent double-completion
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true;
+            console.log('✅ Scan completed! Overall score:', scan.overall_score);
+            
+            // For Priority 1: Pass minimal data (just overall score)
+            // We'll keep mock data for categories until Priority 2+
+            onComplete({
+              overall: scan.overall_score || 0,
+              scanData: scan // Pass full scan for debugging
+            });
+          }
+        } else if (scan.status === 'failed') {
+          setProgress(0);
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          console.error('❌ Scan failed:', scan.error_message);
+          // TODO: Show error message to user
+        }
+      } catch (error) {
+        console.error('❌ Polling error:', error);
+        // Don't stop polling on error - might be temporary network issue
+      }
+    };
+
+    // Initial poll immediately
+    pollScan();
+
+    // Intelligent polling: Only poll if status is pending or in_progress
+    pollingIntervalRef.current = setInterval(() => {
+      // Only poll if not completed/failed
+      if (status !== 'completed' && status !== 'failed') {
+        pollScan();
+      } else {
+        // Stop polling if completed/failed
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+    }, 2000); // Poll every 2 seconds
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        console.log('🛑 Stopping polling');
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [scanId, status, onComplete]);
+
+  // Animate steps based on progress
+  useEffect(() => {
+    if (progress >= 20 && currentStep < 1) {
+      setCompletedSteps(['discover']);
+      setCurrentStep(1);
+    } else if (progress >= 40 && currentStep < 2) {
+      setCompletedSteps(['discover', 'website']);
+      setCurrentStep(2);
+    } else if (progress >= 60 && currentStep < 3) {
+      setCompletedSteps(['discover', 'website', 'google']);
+      setCurrentStep(3);
+    } else if (progress >= 80 && currentStep < 4) {
+      setCompletedSteps(['discover', 'website', 'google', 'reviews']);
+      setCurrentStep(4);
+    } else if (progress >= 100 && currentStep < 5) {
+      setCompletedSteps(['discover', 'website', 'google', 'reviews', 'ordering']);
+      setCurrentStep(5);
     }
-
-    const timer = setTimeout(() => {
-      setCompletedSteps((prev) => [...prev, scanSteps[currentStep].id]);
-      setCurrentStep((prev) => prev + 1);
-    }, scanSteps[currentStep].duration);
-
-    return () => clearTimeout(timer);
-  }, [currentStep, onComplete]);
+  }, [progress, currentStep]);
 
   return (
     <div className="w-full max-w-md mx-auto">
@@ -46,6 +143,13 @@ export const ScanProgress = ({ onComplete }: ScanProgressProps) => {
         animate={{ opacity: 1, scale: 1 }}
         className="bg-card rounded-2xl p-8 shadow-xl border border-border"
       >
+        {/* Debug info */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+          <div>Status: <strong>{status}</strong></div>
+          <div>Progress: <strong>{progress}%</strong></div>
+          <div>Scan ID: <strong className="font-mono">{scanId}</strong></div>
+        </div>
+
         <div className="text-center mb-8">
           <motion.div
             animate={{ scale: [1, 1.05, 1] }}
@@ -60,6 +164,18 @@ export const ScanProgress = ({ onComplete }: ScanProgressProps) => {
           <p className="text-muted-foreground">
             We're analyzing your digital presence. This only takes a moment.
           </p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-6">
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-primary to-primary/80"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
         </div>
 
         <div className="space-y-4">

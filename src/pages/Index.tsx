@@ -5,14 +5,18 @@ import { SearchForm } from "@/components/SearchForm";
 import { RestaurantConfirmation } from "@/components/RestaurantConfirmation";
 import { ScanProgress } from "@/components/ScanProgress";
 import { ResultsDashboard } from "@/components/ResultsDashboard";
+import { WebsiteResults } from "@/components/WebsiteResults";
 import { LeadCaptureModal } from "@/components/LeadCaptureModal";
+import { api } from "@/services/api";
+import { WebsiteAnalysisResponse } from "@/types/api";
 import innowiLogo from "@/assets/innowi-logo.png";
 
-type AppState = "landing" | "confirmation" | "scanning" | "results";
+type AppState = "landing" | "confirmation" | "scanning" | "results" | "website-analyzing" | "website-results";
 
 // Mock data for demo
 const mockRestaurant = {
   name: "The Golden Fork",
+  website: "https://www.thegoldenfork.com",
   address: "123 Main Street, San Francisco, CA 94102",
   rating: 4.3,
   reviewCount: 287,
@@ -106,24 +110,106 @@ const features = [
 const Index = () => {
   const [appState, setAppState] = useState<AppState>("landing");
   const [searchData, setSearchData] = useState({ name: "", city: "" });
+  const [restaurant, setRestaurant] = useState(mockRestaurant);
   const [showLeadModal, setShowLeadModal] = useState(false);
+  const [scanId, setScanId] = useState<string | null>(null);
+  const [isCreatingScan, setIsCreatingScan] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [results, setResults] = useState(mockResults);
+  const [realOverallScore, setRealOverallScore] = useState<number | null>(null);
+  const [websiteResults, setWebsiteResults] = useState<WebsiteAnalysisResponse | null>(null);
+  const [isAnalyzingWebsite, setIsAnalyzingWebsite] = useState(false);
 
   const handleSearch = (name: string, city: string) => {
     setSearchData({ name, city });
+    // For Priority 1: Use mock restaurant data with the searched name
+    // In Priority 2+: This will call restaurant search API
+    setRestaurant({
+      ...mockRestaurant,
+      name: name || mockRestaurant.name,
+    });
     setAppState("confirmation");
   };
 
-  const handleConfirm = () => {
-    setAppState("scanning");
+  const handleConfirm = async () => {
+    setIsCreatingScan(true);
+    setScanError(null);
+    
+    try {
+      // Call backend to create scan
+      const { scan_id } = await api.createScan(
+        restaurant.name,
+        restaurant.website
+      );
+      
+      console.log('✅ Scan created:', scan_id);
+      setScanId(scan_id);
+      setAppState("scanning");
+    } catch (error) {
+      console.error('❌ Scan creation failed:', error);
+      setScanError(error instanceof Error ? error.message : 'Failed to create scan');
+      // For now, show error but don't block UI
+      // TODO: Add error toast notification
+    } finally {
+      setIsCreatingScan(false);
+    }
   };
 
-  const handleScanComplete = () => {
+  const handleScanComplete = (data: any) => {
+    console.log('🎉 Scan complete callback received:', data);
+    
+    // Store real overall score
+    setRealOverallScore(data.overall);
+    
+    // For Priority 1: Keep mock data for categories
+    // Just replace the overall score
+    const resultsWithRealScore = {
+      ...mockResults, // Keep mock category data
+      overall: data.overall // Use real overall score
+    };
+    
+    setResults(resultsWithRealScore);
     setAppState("results");
+  };
+
+  const handleQuickWebsiteCheck = async (url: string) => {
+    setIsAnalyzingWebsite(true);
+    setScanError(null);
+    setAppState("website-analyzing");
+    
+    try {
+      console.log('🌐 Starting website-only analysis for:', url);
+      const results = await api.analyzeWebsite(url);
+      console.log('✅ Website analysis complete:', results);
+      
+      setWebsiteResults(results);
+      setAppState("website-results");
+    } catch (error) {
+      console.error('❌ Website analysis failed:', error);
+      setScanError(error instanceof Error ? error.message : 'Failed to analyze website');
+      setAppState("landing");
+    } finally {
+      setIsAnalyzingWebsite(false);
+    }
+  };
+
+  const handleUpgradeToFullScan = () => {
+    // When user wants to upgrade from website-only to full scan
+    if (websiteResults) {
+      setRestaurant({
+        ...mockRestaurant,
+        website: websiteResults.url,
+        name: new URL(websiteResults.url).hostname.replace('www.', ''),
+      });
+      setAppState("confirmation");
+    }
   };
 
   const handleBack = () => {
     setAppState("landing");
     setSearchData({ name: "", city: "" });
+    setWebsiteResults(null);
+    setScanError(null);
   };
 
   return (
@@ -160,7 +246,10 @@ const Index = () => {
                 </p>
               </motion.div>
 
-              <SearchForm onSearch={handleSearch} />
+              <SearchForm
+                onSearch={handleSearch}
+                onQuickWebsiteCheck={handleQuickWebsiteCheck}
+              />
 
               {/* Social Proof */}
               <motion.p
@@ -201,27 +290,64 @@ const Index = () => {
         {appState === "confirmation" && (
           <div className="container mx-auto px-4 py-20">
             <RestaurantConfirmation
-              restaurant={{
-                ...mockRestaurant,
-                name: searchData.name || mockRestaurant.name,
-              }}
+              restaurant={restaurant}
               onConfirm={handleConfirm}
               onBack={handleBack}
+            />
+            {scanError && (
+              <div className="max-w-lg mx-auto mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                Error: {scanError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {appState === "scanning" && scanId && (
+          <div className="container mx-auto px-4 py-20">
+            <ScanProgress
+              scanId={scanId}
+              onComplete={handleScanComplete}
             />
           </div>
         )}
 
-        {appState === "scanning" && (
+        {appState === "website-analyzing" && (
           <div className="container mx-auto px-4 py-20">
-            <ScanProgress onComplete={handleScanComplete} />
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-md mx-auto text-center space-y-6"
+            >
+              <div className="w-16 h-16 mx-auto">
+                <div className="w-full h-full border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+              <div>
+                <h2 className="font-display text-2xl font-bold text-foreground mb-2">
+                  Analyzing Your Website...
+                </h2>
+                <p className="text-muted-foreground">
+                  Checking performance, mobile responsiveness, and security
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {appState === "website-results" && websiteResults && (
+          <div className="container mx-auto px-4 py-12">
+            <WebsiteResults
+              results={websiteResults}
+              onUpgradeToFullScan={handleUpgradeToFullScan}
+              onBack={handleBack}
+            />
           </div>
         )}
 
         {appState === "results" && (
           <div className="container mx-auto px-4 py-12">
             <ResultsDashboard
-              restaurantName={searchData.name || mockRestaurant.name}
-              results={mockResults}
+              restaurantName={restaurant.name}
+              results={results}
               onBack={handleBack}
               onGetReport={() => setShowLeadModal(true)}
             />
@@ -246,8 +372,8 @@ const Index = () => {
       <LeadCaptureModal
         isOpen={showLeadModal}
         onClose={() => setShowLeadModal(false)}
-        restaurantName={searchData.name || mockRestaurant.name}
-        score={mockResults.overall}
+        restaurantName={restaurant.name}
+        score={results.overall}
       />
     </div>
   );

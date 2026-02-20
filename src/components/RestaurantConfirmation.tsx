@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 
 interface RestaurantData {
   name: string;
+  website: string;
   address: string;
   rating: number;
   reviewCount: number;
@@ -59,9 +60,15 @@ export const RestaurantConfirmation = ({
           </div>
         </div>
 
-        <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg mb-6">
-          <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-muted-foreground">{restaurant.address}</p>
+        <div className="space-y-3 mb-6">
+          <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+            <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-muted-foreground">{restaurant.address}</p>
+          </div>
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-xs text-blue-600 mt-0.5">🌐</span>
+            <p className="text-sm text-blue-800 font-mono break-all">{restaurant.website}</p>
+          </div>
         </div>
 
         <div className="flex gap-3">

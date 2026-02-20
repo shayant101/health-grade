@@ -43,6 +43,20 @@ export const ResultsDashboard = ({
 }: ResultsDashboardProps) => {
   return (
     <div className="w-full max-w-5xl mx-auto">
+      {/* Debug Banner - Priority 1 */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg"
+      >
+        <p className="text-sm text-blue-800">
+          ✅ <strong>Real Data:</strong> Overall Score = {results.overall} (from MongoDB)
+        </p>
+        <p className="text-xs text-blue-600 mt-1">
+          ⚠️ Category scores still using mock data (Priority 2+)
+        </p>
+      </motion.div>
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}

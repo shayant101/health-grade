@@ -22,10 +22,10 @@ class RestaurantScorer:
 
     def calculate_website_score(self, website_data: dict) -> float:
         """
-        Calculate website quality score.
+        Calculate website quality score incorporating PageSpeed metrics.
         
         Args:
-            website_data (dict): Website analysis data
+            website_data (dict): Website analysis data including PageSpeed metrics
         
         Returns:
             float: Website score (0-100)
@@ -33,24 +33,43 @@ class RestaurantScorer:
         if not website_data:
             return 0.0
 
-        # Default values for missing data
-        pagespeed_score = website_data.get('pagespeed_score', 0)
-        is_mobile_friendly = website_data.get('is_mobile_friendly', False)
+        # PageSpeed metrics (from PageSpeed API)
+        performance_score = website_data.get('pagespeed_score', website_data.get('performance_score', 0))
+        accessibility_score = website_data.get('accessibility_score', 0)
+        seo_score = website_data.get('seo_score', 0)
+        best_practices_score = website_data.get('best_practices_score', 0)
+        
+        # Playwright metrics
+        is_mobile_friendly = website_data.get('is_mobile_friendly', website_data.get('mobile_friendly', False))
         has_online_ordering = website_data.get('has_online_ordering', False)
-        has_ssl = website_data.get('has_ssl', False)
+        has_ssl = website_data.get('has_ssl', website_data.get('https_enabled', False))
 
-        # Weighted scoring components
-        pagespeed_weight = min(pagespeed_score, 100)  # Direct use of PageSpeed score
-        mobile_friendly_score = 50 if is_mobile_friendly else 0
-        online_ordering_score = 20 if has_online_ordering else 0
-        ssl_score = 10 if has_ssl else 0
+        # Calculate weighted PageSpeed score (if we have PageSpeed data)
+        has_pagespeed_data = any([performance_score, accessibility_score, seo_score, best_practices_score])
+        
+        if has_pagespeed_data:
+            # Weighted average of PageSpeed metrics
+            pagespeed_composite = (
+                performance_score * 0.40 +      # Performance is most important
+                accessibility_score * 0.25 +    # Accessibility matters for all users
+                seo_score * 0.20 +              # SEO helps discoverability
+                best_practices_score * 0.15     # Best practices for quality
+            )
+        else:
+            # Fallback if no PageSpeed data
+            pagespeed_composite = 0
 
-        # Combine scores
+        # Additional feature scores
+        mobile_friendly_score = 100 if is_mobile_friendly else 0
+        online_ordering_score = 100 if has_online_ordering else 0
+        ssl_score = 100 if has_ssl else 0
+
+        # Combine all scores with weights
         total_score = (
-            pagespeed_weight * 0.7 +  # Most weight to performance
-            mobile_friendly_score * 0.1 +
-            online_ordering_score * 0.1 +
-            ssl_score * 0.1
+            pagespeed_composite * 0.60 +      # 60% weight to PageSpeed metrics
+            mobile_friendly_score * 0.15 +    # 15% weight to mobile friendliness
+            ssl_score * 0.15 +                # 15% weight to HTTPS
+            online_ordering_score * 0.10      # 10% weight to online ordering
         )
 
         return self._clamp_score(total_score)

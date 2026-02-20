@@ -104,12 +104,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # Import and register routes
-from .routes import restaurants, scans, leads
+from .routes import restaurants, scans, leads, website
 
 # Register routes with appropriate prefixes
 app.include_router(restaurants.router, prefix="/api/restaurants", tags=["restaurants"])
 app.include_router(scans.router, prefix="/api/scans", tags=["scans"])
 app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
+app.include_router(website.router, prefix="/api/website", tags=["website"])
 
 # Run the application if this file is executed directly
 if __name__ == "__main__":

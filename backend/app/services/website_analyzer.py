@@ -71,12 +71,17 @@ class WebsiteAnalyzer:
             Dict[str, Any]: PageSpeed analysis results
         """
         try:
-            async with httpx.AsyncClient() as client:
-                params = {
-                    'url': url,
-                    'key': settings.PAGESPEED_API_KEY,
-                    'strategy': 'MOBILE' if mobile else 'DESKTOP'
-                }
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                # Build params list to include multiple categories
+                params = [
+                    ('url', url),
+                    ('key', settings.PAGESPEED_API_KEY),
+                    ('strategy', 'MOBILE' if mobile else 'DESKTOP'),
+                    ('category', 'PERFORMANCE'),
+                    ('category', 'ACCESSIBILITY'),
+                    ('category', 'BEST_PRACTICES'),
+                    ('category', 'SEO')
+                ]
                 
                 response = await client.get(cls.PAGESPEED_URL, params=params)
                 response.raise_for_status()
@@ -97,6 +102,7 @@ class WebsiteAnalyzer:
         
         except Exception as e:
             logging.error(f"PageSpeed Insights error for {url}: {e}")
+            # Graceful degradation - PageSpeed is optional
             return {}
     
     @classmethod
@@ -112,14 +118,14 @@ class WebsiteAnalyzer:
         """
         try:
             async with browser_manager.get_page() as page:
-                # Navigate to the website
-                await page.goto(url, timeout=15000)
+                # Navigate to the website with increased timeout (30 seconds)
+                await page.goto(url, timeout=30000, wait_until='domcontentloaded')
                 
                 # Check HTTPS
-                https_enabled = page.url().startswith('https://')
+                https_enabled = page.url.startswith('https://')
                 
                 # Check mobile friendliness (viewport)
-                await page.setViewportSize({'width': 375, 'height': 667})
+                await page.set_viewport_size({'width': 375, 'height': 667})
                 
                 # Check for responsive design
                 body_width = await page.evaluate('() => document.body.clientWidth')
@@ -146,7 +152,7 @@ class WebsiteAnalyzer:
         
         except Exception as e:
             logging.error(f"Playwright analysis error for {url}: {e}")
-            return {}
+            raise  # Re-raise to allow proper error handling upstream
     
     @classmethod
     async def check_website_availability(cls, url: str) -> bool:
@@ -160,10 +166,24 @@ class WebsiteAnalyzer:
             bool: Whether the website is available
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.head(url, follow_redirects=True, timeout=10.0)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Try HEAD first (faster)
+                try:
+                    response = await client.head(url, follow_redirects=True)
+                    if response.status_code < 400:
+                        return True
+                except Exception:
+                    # If HEAD fails, try GET (some sites block HEAD requests)
+                    pass
+                
+                # Fallback to GET request
+                response = await client.get(url, follow_redirects=True)
                 return response.status_code < 400
         
+        except httpx.TimeoutException:
+            logging.warning(f"Website availability check timed out for {url}")
+            # Don't fail on timeout - let the main analysis handle it
+            return True
         except Exception as e:
             logging.warning(f"Website availability check failed for {url}: {e}")
             return False
